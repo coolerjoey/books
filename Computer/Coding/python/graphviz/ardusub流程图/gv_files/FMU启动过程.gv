@@ -1,0 +1,74 @@
+digraph FMU_START{
+	graph [fontsize=10 fontname="SimSun" compound=true];
+	node [shape=box,fontsize=10,fontname="SimSun",color=green,style=filled];
+	//edge [fontsize=10 fontname="SimSun" color=blue];
+	
+	start [label="上电",shape = Mdiamond,color = red]
+	subgraph cluster0{
+		node0001 [label="Bootloader \n"];
+	}
+	subgraph cluster1{
+		label = "modules/PX4NuttX/nuttx/arch/arm/src/stm32/ \n stm32_start.c \n";
+		node1001 [label="__start() \n stm32硬件初始化"];
+	}
+	subgraph cluster2{
+		label = "modules/PX4NuttX/nuttx/sched/ \n os_start.c \n";
+		node2001 [label="os_start() \n Nuttx系统初始化"];
+	}
+	subgraph cluster3{
+		label = "modules/PX4NuttX/nuttx/sched/ \n os_bringup.c \n";
+		node3001 [label="os_bringup() \n 创建进程，指针为CONFIG_USER_ENTRYPOINT"];
+	}
+	nodeCONFIG [shape = Mdiamond,label="CONFIG_USER_ENTRYPOINT",color=skyblue]
+	
+	start->node0001 [lhead=cluster0]
+	node0001->node1001 [label="跳转",fontname="SimSun"]
+	edge[color = red,style = dotted]
+	node1001->node2001->node3001->nodeCONFIG 
+	
+//**********************PX4FMU********************************
+	subgraph cluster4{
+		label = "build/px4-v2/modules/PX4Firmware/px4fmu-v2/NuttX/nuttx/include/nuttx \n config.h \n";
+		node4001 [label="#define CONFIG_USER_ENTRYPOINT nsh_main \n ",color=skyblue];
+	}
+	subgraph cluster5{
+		label = "modules/PX4NuttX/apps/examples/nsh/ \n nsh_main.c \n";
+		node5001 [label="nsh_main() \n "];
+	}
+	subgraph cluster6{
+		label = "modules/PX4NuttX/apps/nshlib/ \n nsh_consolemain.c \n";
+		node6001 [label="nsh_consolemain() \n "];
+	}
+	subgraph cluster7{
+		label = "modules/PX4NuttX/apps/nshlib/ \n nsh_script.c \n";
+		node7001 [label="nsh_initscript() \n 初始化nsh脚本"];
+		node7002 [label="nsh_script() \n "];
+	}
+	subgraph cluster8{
+		label = "modules/PX4NuttX/apps/nshlib/ \n nsh_script.c \n";
+		node8001 [label="nsh_session() \n 执行nsh脚本"];
+	}
+	subgraph cluster9{
+		label = "modules/PX4NuttX/apps/nshlib/ \n nsh_parse.c \n";
+		node9002 [label="nsh_parse() \n 解析rcs"];
+	}
+	
+	nodeCONFIG->node4001 [label="PX4FMU",fontcolor=red]
+	node4001->node5001 ->node6001->node7001
+	node7001->node7002 [label="#define NSH_INITPATH CONFIG_NSH_ROMFSMOUNTPT \"/\" CONFIG_NSH_INITSCRIPT \n #define CONFIG_NSH_ROMFSMOUNTPT \"/etc\" \n #define CONFIG_NSH_INITSCRIPT \"init.d/rcS\"",fontcolor=blue]
+	node7001->node8001 [color=black,style=full]
+	node8001->node9002
+
+//**********************PX4IO********************************
+	subgraph cluster10{
+		label = "build/px4-v2/modules/PX4Firmware/px4io-v2/NuttX/nuttx/include/nuttx \n config.h \n";
+		node10001 [label="#define CONFIG_USER_ENTRYPOINT usr_start \n ",color=skyblue];
+	}
+	subgraph cluster11{
+		label = "modules/PX4Firmware/src/modules/px4iofirmware/ \n px4io.c \n";
+		node11001 [label="user_start() "];
+	}
+	
+	nodeCONFIG->node10001 [label="PX4IO",fontcolor=red]
+	node10001->node11001
+}

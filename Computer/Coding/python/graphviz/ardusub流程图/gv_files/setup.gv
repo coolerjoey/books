@@ -1,0 +1,33 @@
+digraph setup{
+	graph [fontsize=10 fontname="SimSun" compound=true];
+	node [shape=box,fontsize=10,fontname="SimSun",color=green,style=filled];
+	//edge [fontsize=10 fontname="SimSun" color=blue];
+	
+	subgraph cluster_hal_run {
+		label = "Ardusub.cpp";
+		0.1 [label="AP_HAL_MAIN_CALLBACKS(&sub)"];
+		0.2 [label="hal.run(argc, argv, CALLBACKS)"];
+		edge[color = red,style = dotted];
+		0.1->0.2
+	}
+	subgraph cluster_get_HAL{
+		label = "Sub.cpp";
+		1.1 [label="const AP_HAL::HAL& hal=AP_HAL::get_HAL()"];
+	}
+	subgraph cluster_HAL_ChibiOS_run{
+		label = "HAL_ChibiOS::run(int argc, char * const argv[], Callbacks* callbacks) const";
+		2.1 [label="main_loop()"];
+		2.2 [label="g_callbacks->setup()"];
+		2.3 [label="g_callbacks->loop()"];
+		edge[color = red,style = dotted];
+		2.1->2.2
+		edge[color = black,style = line];
+		2.2->2.3->2.3
+	}
+	
+	1.1->0.2 [color = blue,style = dotted,label="hal=\nHAL_ChibiOS",fontcolor=blue]
+	0.2->2.1 [color = red,style = dotted,ltail=0.2,lhead=cluster_HAL_ChibiOS_run]
+	0.1->2.1 [color = blue,style = dotted,ltail=0.1,lhead=cluster_HAL_ChibiOS_run,label="g_callbacks=\n sub",fontcolor=blue]
+	
+
+}
