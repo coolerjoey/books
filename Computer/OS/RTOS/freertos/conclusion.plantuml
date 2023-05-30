@@ -1,0 +1,437 @@
+' Ref:
+'   避免线重叠：https://stackoverflow.com/questions/48712801/how-to-correct-plantuml-line-path
+
+@startuml FreeRTOS
+
+skinparam linetype ortho
+skinparam dpi 300
+
+!$CPARAM = Green
+!$CNOTE = Green
+!$CJUDGE = Grey
+!$CLOOP = Gold
+
+package "Annotation Declatation"{
+    entity1 ..> entity2 : 内部调用
+    note on link #Green: entity1 内部调用 entity2
+
+    entity3 ..|> entity4 : 触发
+    note on link #Green: entity3 触发相应 entity4
+
+    entity5 --> entity6 : 顺序运行
+    note on link #Green: 先运行entity5, 再运行entity6
+
+    entity7 ..+ entity8 : 创建
+    note on link #Green: entity7 创建了 entity8
+
+    entity9 ..# entity10 #Green: 参数传递
+    note on link #Green: entity9 传给参数给 entity10
+
+    circle param1
+    note left of param1 #Green: 全局变量
+
+    diamond param2
+    note left of param2 #Green: 局部变量
+
+    note "条件判断" as judge #$CJUDGE
+    note left of judge #Green: 判断
+
+    note "循环判断" as loop #$CLOOP
+    note left of loop #Green: 循环(不满足条件跳出)
+}
+
+package "main.c"
+{
+    interface 创建静态任务
+    interface 将任务添加到就绪列表
+    interface 开始多任务调度
+    entity task1
+}
+
+package "FreeRTOSConfig.h"{
+    circle configUSE_PORT_OPTIMISED_TASK_SELECTION
+    note left of configUSE_PORT_OPTIMISED_TASK_SELECTION #$CPARAM: \
+                    configUSE_PORT_OPTIMISED_TASK_SELECTION \
+                    \n寻找优先级最高优化选项
+
+    circle configUSE_PREEMPTION
+    note left of configUSE_PREEMPTION #$CPARAM: \
+                    configUSE_PREEMPTION \
+                    \n1-RTOS使用抢占式调度器 \
+                    \n0-RTOS使用协作式调度器（时间片）\
+                    \n__不同优先级任务能否互相抢占__
+
+    circle configUSE_TIME_SLICING
+    note left of configUSE_TIME_SLICING #$CPARAM: \
+                    configUSE_TIME_SLICING \
+                    \n使能时间片调度 \
+                    \n__同一优先级任务能否按照时间片分时运行__
+}
+
+package "task.c"
+{
+    circle pxCurrentTCB
+    note left of pxCurrentTCB #$CPARAM: pxCurrentTCB \n指向当前正在运行或者即将要运行的任务的任务控制块
+
+    circle xTickCount
+    note left of xTickCount #$CPARAM: xTickCount \n系统开始调度后的时基计数器
+
+    diamond uxCurrentNumberOfTasks 
+    note left of uxCurrentNumberOfTasks #$CPARAM: uxCurrentNumberOfTasks \n创建的Task个数
+
+    diamond uxTopReadyPriority
+    note left of uxTopReadyPriority #$CPARAM: \
+                    uxTopReadyPriority \
+                    \n当 configUSE_PORT_OPTIMISED_TASK_SELECTION==0，它用来记录最高优先级任务的优先级 \
+                    \n当 configUSE_PORT_OPTIMISED_TASK_SELECTION==1，它的每一位（共 32bit）的状态代表这个优先级上边，有没有就绪的任务
+
+
+    diamond xNextTaskUnblockTime
+    note left of xNextTaskUnblockTime #$CPARAM: xNextTaskUnblockTime \n表示下一个任务的解锁时刻
+
+    diamond pxDelayedTaskList
+    note left of pxDelayedTaskList #$CPARAM: pxDelayedTaskList \n正常任务延时列表
+   
+    diamond pxOverflowDelayedTaskList
+    note left of pxOverflowDelayedTaskList #$CPARAM: pxOverflowDelayedTaskList \n溢出任务延时列表
+
+    note "延时溢出?" as is_xTimeToWake_overflow #$CJUDGE
+    note left of is_xTimeToWake_overflow : 举例：如果当前 xTickCount 的值等于 0xfffffffdUL，xTicksToWait 等于 0x03，\
+                                            \n那么 xTimeToWake = 0xfffffffdUL + 0x03 = 1，显然得出的值比任务需要延时的时间 \
+                                            \n0x03 还小，这肯定不正常，说明溢出了，这个时候需要将任务插入到溢出任务延时列表。
+
+    note "uxListRemove()返回0" as is_uxListRemove_return_0 #$CJUDGE
+
+    note "xTickCount == 0?" as is_xTickCount_equal_0 #$CJUDGE
+
+    note "xTickCount >= xNextTaskUnblockTime?" as while_xTickCount_bigger_than_xNextTaskUnblockTime #$CLOOP
+    note left of while_xTickCount_bigger_than_xNextTaskUnblockTime : 将延时列表中所有延时到期的任务移除并添加到就绪列表
+
+    note "xTaskResumeAll() == false?" as is_xTaskResumeAll_return_false #$CJUDGE
+
+    interface xTaskIncrementTick返回值{
+        当configUSE_PREEMPTION==1 && 允许抢占且就绪任务的优先级比当前任务优先级高 
+        &&
+        当configUSE_PREEMPTION==1 && configUSE_TIME_SLICING==1 && 当前优先级下不止一个任务
+        ~< return true
+    }
+
+
+    entity xTaskCreateStatic{
+        #brief: 创建静态任务
+    }
+
+    entity xTaskCreate{
+        #brief: 创建动态任务
+    }
+    
+    entity prvInitialiseNewTask{
+        #brief: 创建新任务
+    }
+
+    entity prvAddNewTaskToReadyList{
+        #brief: 把任务添加到就绪列表中
+    }
+
+    entity prvAddTaskToReadyList{
+        #brief: 插入对应任务列表
+    }
+
+    entity prvInitialiseTaskLists{
+        #brief: 任务列表初始化
+        +func: 初始化就绪列表 pxReadyTasksLists(有几位优先级就有几个就绪列表) \
+                \n延时列表 xDelayedTaskList1 \
+                \n延时溢出列表 xDelayedTaskList2 \
+                \n挂起列表 xSuspendedTaskList \
+                \n待处理就绪列表 xPendingReadyList \
+                \n结束列表 xTasksWaitingTermination
+    }
+
+    entity vTaskStartScheduler{
+        #brief: 启动调度器
+        +func: 
+        \t 1. 创建空闲任务
+        \t 2. 从就绪列表里面找到优先级最高的任务，然后去执行该任务
+    }
+
+    entity taskYIELD{
+        #brief: 任务切换
+    }
+
+    entity vTaskSwitchContext{
+        #brief: 选择优先级最高的任务，然后更新 pxCurrentTCB
+    }
+
+    entity prvIdleTask{
+        #brief: 空闲任务
+    }
+
+    entity vTaskDelay{
+        #brief: 延时阻塞
+        ~>: xTicksToDelay(要延时的时基单位)
+    }
+
+    entity xTaskIncrementTick{
+        #brief: 
+        +func:
+        \t 1.更新系统时基计数器
+    }
+
+    entity taskRECORD_READY_PRIORITY{
+        #brief: 根据输入置位 uxTopReadyPriority 对应位的值
+    }
+
+    entity taskSELECT_HIGHEST_PRIORITY_TASK{
+        #brief: 寻找优先级最高的就绪任务TCB,更新pxCurrentTCB
+        -note: 根据 configUSE_PORT_OPTIMISED_TASK_SELECTION 的配置有普通方法和对应处理器优化算法
+    }
+
+    entity taskRESET_READY_PRIORITY{
+        #brief: 根据输入复位 uxTopReadyPriority 对应位的值
+        -note: 先判断当前优先级链表下是否还有其它任务，如果有则不清零
+    }
+
+    entity prvAddCurrentTaskToDelayedList{
+        #brief: 将当前任务插入到延时列表
+    }
+
+    entity taskSWITCH_DELAYED_LISTS{
+        #brief: 切换延时列表
+        -note: 其实就是调换pxDelayedTaskList和pxOverflowDelayedTaskList两个指针的指向
+    }
+
+    entity prvResetNextTaskUnblockTime{
+        #brief: 复位 xNextTaskUnblockTime 的值
+    }
+
+    entity vTaskSuspendAll{
+        #brief: 挂起调度器
+    }
+
+    entity xTaskResumeAll{
+        #brief: 恢复调度器
+    }
+
+}
+
+package "list.c"{
+    entity vListInitialiseItem{
+
+    }
+
+    entity vListInsertEnd{
+        #brief: 将节点插入到链表尾部
+    }
+
+    entity uxListRemove{
+        #brief: 将任务从就绪列表移除
+        ~>pxItemToRemove(要删除的任务节点所在的列表的节点个数)
+        ~<return(删除后该列表剩余节点个数)
+    }
+
+    entity vListInsert{
+        #brief: 根据xItemValue将节点升序排列插入链表
+        ~>: pxList(要插入的链表)
+        ~>: pxNewListItem(要插入的节点)
+    }
+
+    entity listGET_OWNER_OF_HEAD_ENTRY{
+        #brief: 获取链表第一个节点的PCB
+        ~>: pxList(要获取的链表)
+    }
+
+    entity listGET_OWNER_OF_NEXT_ENTRY{
+        #brief: 第N次调用时获取链表第N个节点
+    }
+    note left of listGET_OWNER_OF_NEXT_ENTRY : 实现同一优先级下的任务共享时间片
+}
+
+package "port.c"
+{
+    note "xTaskIncrementTick返回true?" as is_xTaskIncrementTick_true #$CJUDGE
+
+    entity pxPortInitialiseStack{
+        #brief: 初始化任务栈 
+        +func: 加载XPSR,R0-R15(除R13(SP))寄存器内容到栈中。
+            其中，R15(PC),R14(LR),R0(Parameters),R1-R12默认初始化为0
+    }
+
+    entity xPortStartScheduler{
+        #brief: 配置PendSV和SysTick的中断优先级别为最低
+    }
+
+    entity prvStartFirstTask{
+        #brief: 开始第一个任务
+        +func: 一个是更新 MSP 的值，二是产生 SVC 系统调用，
+            然后去到 SVC 的中断服务函数里面真正切换到第一个任务
+    }
+
+    entity vPortSVCHandler{
+        #brief: 运行 pxCurrentTCB 指向的函数，不再返回
+    }
+    note left of vPortSVCHandler : 等同于中断向量表中的SVC_Handler
+
+    entity vPortYield{
+        +brief: 当没有其它中断运行的时候响应 PendSV 中断
+    }
+
+    entity xPortPendSVHandler{
+        #brief: 执行函数切换,运行 pxCurrentTCB 指向的函数,不再返回
+    }
+    note left of xPortPendSVHandler : 等同于中断向量表中的PendSV_Handler
+
+    entity xPortSysTickHandler{
+
+    }
+
+    entity vPortSetupTimerInterrupt{
+        #brief: SysTick 初始化
+    }
+
+    interface 当前任务上下文参数压栈
+    interface 新任务上下文参数出栈
+    interface 跳转执行新任务
+}
+
+package "portmacro.h"{
+    entity vPortRaiseBASEPRI{
+        #brief: 关中断, 进入临界段
+        -note: 不带返回值的关中断函数，不能嵌套，不能在中断里面使用
+    }
+
+    entity vPortClearBASEPRIFromISR{
+        #brief: 开中断，退出临界段
+        -note: 不带中断保护的开中断函数,和vPortRaiseBASEPRI成对使用
+    }
+
+    entity ulPortRaiseBASEPRI{
+        #brief: 关中断, 进入临界段
+        -note: 带返回值的关中断函数，可以嵌套，可以在中断里面使用
+    }
+
+    entity vPortSetBASEPRI{
+        #brief: 开中断，退出临界段
+        -note: 带中断保护的开中断函数,和ulPortRaiseBASEPRI成对使用
+        --
+        uint32_t ulBASEPRI
+    }
+
+    entity portRESET_READY_PRIORITY{
+        #brief: 清除优先级位图表 uxTopReadyPriority 中对应的位
+    }
+
+    entity portGET_HIGHEST_PRIORITY{
+        #brief: 寻找就绪任务的最高优先级
+    }
+}
+
+package "中断服务函数"{
+    entity SysTick_Handler{
+
+    }
+}
+
+' main函数
+创建静态任务 --> 将任务添加到就绪列表
+将任务添加到就绪列表 --> 开始多任务调度
+创建静态任务 ..+ task1
+
+' 创建静态任务过程
+创建静态任务 ..> xTaskCreateStatic 
+将任务添加到就绪列表 ..> vListInsertEnd
+开始多任务调度 ..> vTaskStartScheduler
+note "configSUPPORT_STATIC_ALLOCATION==true?" as is_configSUPPORT_STATIC_ALLOCATION_true #$CJUDGE
+vTaskStartScheduler "1.创建空闲任务" ..> is_configSUPPORT_STATIC_ALLOCATION_true
+is_configSUPPORT_STATIC_ALLOCATION_true "true" ..> xTaskCreateStatic
+is_configSUPPORT_STATIC_ALLOCATION_true "false" ..> xTaskCreate
+vTaskStartScheduler ..+ prvIdleTask
+xTaskCreateStatic "1" ..> prvInitialiseNewTask
+xTaskCreateStatic "2" ..> prvAddNewTaskToReadyList
+prvInitialiseNewTask "1" ..> vListInitialiseItem
+prvInitialiseNewTask "2" ..> pxPortInitialiseStack
+note "uxCurrentNumberOfTasks==1?" as is_uxCurrentNumberOfTasks_euqal_1 #$CJUDGE
+prvAddNewTaskToReadyList "1" ..> is_uxCurrentNumberOfTasks_euqal_1
+is_uxCurrentNumberOfTasks_euqal_1 "true" ..> prvInitialiseTaskLists
+prvAddNewTaskToReadyList "2" ..> prvAddTaskToReadyList
+prvAddTaskToReadyList "1" ..> taskRECORD_READY_PRIORITY
+prvAddTaskToReadyList "2" ..> vListInsertEnd
+vTaskStartScheduler "2" ..> xPortStartScheduler
+xPortStartScheduler "1" ..> vPortSetupTimerInterrupt
+xPortStartScheduler "2" ..> prvStartFirstTask
+prvStartFirstTask ..|> vPortSVCHandler
+
+
+' 任务切换
+task1 ..> vTaskDelay
+vTaskDelay "1" ..> vTaskSuspendAll
+
+vTaskDelay "2" ..> prvAddCurrentTaskToDelayedList
+prvAddCurrentTaskToDelayedList "1" ..> uxListRemove
+prvAddCurrentTaskToDelayedList "2" ..> is_uxListRemove_return_0
+is_uxListRemove_return_0 "true" ..> portRESET_READY_PRIORITY
+prvAddCurrentTaskToDelayedList "3" ..> is_xTimeToWake_overflow
+is_xTimeToWake_overflow "true-插入pxDelayedTaskList" ..> vListInsert
+is_xTimeToWake_overflow "false-插入pxOverflowDelayedTaskList" ..> vListInsert
+
+vTaskDelay "3" ..> xTaskResumeAll
+
+vTaskDelay "4" ..> is_xTaskResumeAll_return_false
+is_xTaskResumeAll_return_false "true" ..> vPortYield
+vPortYield ..|> xPortPendSVHandler
+xPortPendSVHandler "1" ..> 当前任务上下文参数压栈
+xPortPendSVHandler "2" ..> vTaskSwitchContext
+vTaskSwitchContext ..> taskSELECT_HIGHEST_PRIORITY_TASK
+taskSELECT_HIGHEST_PRIORITY_TASK "1" ..> portGET_HIGHEST_PRIORITY
+taskSELECT_HIGHEST_PRIORITY_TASK "2" ..> listGET_OWNER_OF_NEXT_ENTRY
+xPortPendSVHandler "3" ..> 新任务上下文参数出栈
+xPortPendSVHandler "4" ..> 跳转执行新任务
+
+' 时间更新
+SysTick_Handler ..> xPortSysTickHandler
+xPortSysTickHandler "1" ..> vPortRaiseBASEPRI
+note on link: The SysTick runs at the lowest interrupt priority, \
+            so when this interrupt executes all interrupts must be unmasked. \
+            \n There is therefore no need to save and then restore the interrupt mask value \
+            as its value is already known. \
+            \n therefore the slightly faster vPortRaiseBASEPRI() function is used in place of ulPortRaiseBASEPRI().
+
+xPortSysTickHandler "2" ..> xTaskIncrementTick
+xTaskIncrementTick "1" ..> is_xTickCount_equal_0
+is_xTickCount_equal_0 "true" ..> taskSWITCH_DELAYED_LISTS
+taskSWITCH_DELAYED_LISTS ..> prvResetNextTaskUnblockTime
+xTaskIncrementTick "2" ..> while_xTickCount_bigger_than_xNextTaskUnblockTime
+while_xTickCount_bigger_than_xNextTaskUnblockTime "1" ..> listGET_OWNER_OF_HEAD_ENTRY
+while_xTickCount_bigger_than_xNextTaskUnblockTime "2" ..> uxListRemove
+while_xTickCount_bigger_than_xNextTaskUnblockTime "3" ..> prvAddTaskToReadyList
+xTaskIncrementTick "3" ..>  xTaskIncrementTick返回值
+
+xPortSysTickHandler "3" ..> is_xTaskIncrementTick_true
+is_xTaskIncrementTick_true "true" ..|> xPortPendSVHandler
+
+xPortSysTickHandler "4" ..> vPortClearBASEPRIFromISR
+
+
+' 信号传递
+pxCurrentTCB ..# vPortSVCHandler #$CPARAM
+pxCurrentTCB ..# taskSELECT_HIGHEST_PRIORITY_TASK #$CPARAM
+pxCurrentTCB ..# xPortPendSVHandler #$CPARAM
+pxCurrentTCB ..# prvAddCurrentTaskToDelayedList #$CPARAM
+
+xTickCount ..# xTaskIncrementTick #$CPARAM
+
+uxTopReadyPriority ..# taskRECORD_READY_PRIORITY #$CPARAM
+uxTopReadyPriority ..# portRESET_READY_PRIORITY #$CPARAM
+
+configUSE_PORT_OPTIMISED_TASK_SELECTION ..# taskSELECT_HIGHEST_PRIORITY_TASK #$CPARAM
+
+pxDelayedTaskList ..# prvAddCurrentTaskToDelayedList #$CPARAM
+pxDelayedTaskList ..# taskSWITCH_DELAYED_LISTS #$CPARAM
+pxDelayedTaskList ..# xTaskIncrementTick #$CPARAM
+
+pxOverflowDelayedTaskList ..# prvAddCurrentTaskToDelayedList #$CPARAM
+pxOverflowDelayedTaskList ..# taskSWITCH_DELAYED_LISTS #$CPARAM
+
+configUSE_PREEMPTION ..# xTaskIncrementTick返回值 #$CPARAM
+configUSE_TIME_SLICING ..# xTaskIncrementTick返回值 #$CPARAM
+
+@enduml
